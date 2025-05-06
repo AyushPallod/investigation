@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investigation Dashboard</title>
+    
+    <!-- CSS Styles -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-control {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="file"], select, input[type="date"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        #chart {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Investigation Dashboard</h1>
+        
+        <div class="form-control">
+            <label for="fileUpload">Upload Excel File:</label>
+            <input type="file" id="fileUpload" accept=".xlsx, .xls">
+        </div>
+        
+        <div class="form-control">
+            <label for="investigationSelect">Select Investigation(s):</label>
+            <select id="investigationSelect" multiple size="5"></select>
+        </div>
+        
+        <div class="form-control">
+            <label for="dateSelect">Select Date:</label>
+            <input type="date" id="dateSelect">
+        </div>
+        
+        <button id="submitBtn">Generate Chart</button>
+        
+        <div id="chart"></div>
+    </div>
+
+    <!-- Include Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+        let investigationData = [];
+
+        document.getElementById('fileUpload').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+                investigationData = jsonData;
+                const investigationNames = [...new Set(jsonData.map(item => item['Name of Investigation']))];
+                const selectElement = document.getElementById('investigationSelect');
+                selectElement.innerHTML = '';
+
+                investigationNames.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    selectElement.appendChild(option);
+                });
+            };
+
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('submitBtn').addEventListener('click', function() {
+            const selectedInvestigations = Array.from(document.getElementById('investigationSelect').selectedOptions).map(option => option.value);
+            const selectedDate = document.getElementById('dateSelect').value;
+            
+            const filteredData = investigationData.filter(item => 
+                selectedInvestigations.includes(item['Name of Investigation']) && 
+                (!selectedDate || new Date(item['Wo Date']).toISOString().split('T')[0] === selectedDate)
+            );
+            
+            const groupedData = filteredData.reduce((acc, item) => {
+                const date = item['Wo Date'].split('T')[0];
+                const investigation = item['Name of Investigation'];
+                acc[investigation] = acc[investigation] || {};
+                acc[investigation][date] = (acc[investigation][date] || 0) + 1;
+                return acc;
+            }, {});
+            
+            const dates = [...new Set(filteredData.map(item => item['Wo Date'].split('T')[0]))];
+            const traces = Object.keys(groupedData).map(name => {
+                const counts = dates.map(date => groupedData[name][date] || 0);
+                return {
+                    x: dates,
+                    y: counts,
+                    type: 'bar',
+                    name: name
+                };
+            });
+
+            const layout = {
+                title: 'Investigation Occurrences by Date',
+                xaxis: { title: 'Date' },
+                yaxis: { title: 'Number of Occurrences' },
+                barmode: 'group'
+            };
+
+            Plotly.newPlot('chart', traces, layout);
+        });
+    </script>
+    
+    <!-- Include XLSX.js for reading Excel files in the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</body>
+</html>
